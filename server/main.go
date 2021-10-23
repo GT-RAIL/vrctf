@@ -8,7 +8,6 @@
 // JSON marshalling of sync.Map: https://play.golang.org/p/PdSjIcV8iJh
 
 
-
 package main
 
 import (
@@ -49,6 +48,54 @@ func dist(a [2]float64, b [2]float64) float64 {
 	return math.Sqrt(math.Pow(a[0] - b[0], 2) + math.Pow(a[1] - b[1], 2))
 }
 
+func reset_gamestate() GameStates{
+	// create the game states JSON object
+	game_states := GameStates{
+		// initialize the red team attributes
+		RedTeam : sync.Map{},
+		RedTeamOculusId : 0,
+		RedFlagAtBase : true,
+		RedFlagBaseLocation : [2]float64{.5, .1},
+		
+		// initialize the blue team attributes
+		BlueTeam : sync.Map{},
+		BlueTeamOculusId : 0,
+		BlueFlagAtBase : true,
+		BlueFlagBaseLocation : [2]float64{.5, .9},
+	}
+
+	// intialize the red team robots
+	game_states.RedTeam.Store("cozmo_1", CozmoState{
+		Location : [2]float64{.1, .2},
+	})
+	/*game_states.RedTeam.Store("cozmo_2", CozmoState{
+		Location : [2]float64{.3, .4},
+	})
+	game_states.RedTeam.Store("cozmo_3", CozmoState{
+		Location : [2]float64{.5, .6},
+	})
+	game_states.RedTeam.Store("cozmo_4", CozmoState{
+		Location : [2]float64{.7, .8},
+	})*/
+
+	// intiialize the blue team robots
+	game_states.BlueTeam.Store("cozmo_5", CozmoState{
+		Location : [2]float64{.9, .8},
+	})
+	game_states.BlueTeam.Store("cozmo_6", CozmoState{
+		Location : [2]float64{.7, .6},
+	})
+	/*game_states.BlueTeam.Store("cozmo_7", CozmoState{
+		Location : [2]float64{.5, .4},
+	})
+	game_states.BlueTeam.Store("cozmo_8", CozmoState{
+		Location : [2]float64{.3, .2},
+	})*/
+
+	log.Println("reset game state")
+	return game_states
+}
+
 // uses the game states object to determine the HasFlag(s), CanMove, and FlagAtBase bools
 func engine(game_states *GameStates) {
 	// determine auras between each robot
@@ -56,15 +103,26 @@ func engine(game_states *GameStates) {
 	
 	robot_proximities := [][2]string{}  // names of robots from opposite teams in proximity to each other, so we can parse for flag transfers after calculating auras
 
+	// reset aura counts for each robot on each team
+	game_states.RedTeam.Range(func(red_robot_id, red_robot_state interface{}) bool {
+		_red_robot_state := red_robot_state.(CozmoState)
+		_red_robot_state.AuraCount = 0.0
+		game_states.RedTeam.Store(red_robot_id, _red_robot_state)
+		return true
+	})
+
+
 	// for each robot on the red team...
 	game_states.RedTeam.Range(func(red_robot_id, red_robot_state interface{}) bool {
 		_red_robot_state := red_robot_state.(CozmoState)
+		_red_robot_AuraCount := 0.0
+		
 		// for each other robot on the red team...
 		game_states.RedTeam.Range(func(_ , other_red_robot_state interface{}) bool {
 			_other_red_robot_state := other_red_robot_state.(CozmoState)
 			// if the robots are close (team mates), add an aura, INCLUDING self
 			if dist(_red_robot_state.Location, _other_red_robot_state.Location) <= aura_range {
-				_red_robot_state.AuraCount += 1.0
+				_red_robot_AuraCount += 1.0
 			}
 			return true
 		})
@@ -73,14 +131,16 @@ func engine(game_states *GameStates) {
 		robot_proximities = nil  // reset the proximity list
 		game_states.BlueTeam.Range(func(blue_robot_id, blue_robot_state interface{}) bool {
 			_blue_robot_state := blue_robot_state.(CozmoState)
+			_blue_robot_AuraCount := 0.0
 			// if the robots are close (enemies), reduce aura on both robots
 			if dist(_red_robot_state.Location, _blue_robot_state.Location) <= aura_range {
-				_red_robot_state.AuraCount -= 1.0
-				_blue_robot_state.AuraCount -= 1.0
+				_red_robot_AuraCount -= 1.0
+				_blue_robot_AuraCount -= 1.0
 				robot_proximities = append(robot_proximities, [2]string{red_robot_id.(string), blue_robot_id.(string)})  // note that these robots are proximal for red
 			}
 
 			// update the blue robot state
+			_blue_robot_state.AuraCount = _blue_robot_AuraCount
 			game_states.BlueTeam.Store(blue_robot_id.(string), _blue_robot_state)
 			return true
 		})
@@ -117,6 +177,7 @@ func engine(game_states *GameStates) {
 		}
 
 		// update the red robot state
+		_red_robot_state.AuraCount = _red_robot_AuraCount
 		game_states.RedTeam.Store(red_robot_id.(string), _red_robot_state)
 		return true
 	})
@@ -212,82 +273,14 @@ func engine(game_states *GameStates) {
 
 // handles the webserver
 func main() {
-	// create the game states JSON object
-	game_states := GameStates{
-		// initialize the red team
-		/*RedTeam : map[string]CozmoState{
-			"cozmo_1" : CozmoState{
-				Location : [2]float64{.1, .2},
-			},
-			"cozmo_2" : CozmoState{
-				Location : [2]float64{.3, .4},
-			},
-			"cozmo_3" : CozmoState{
-				Location : [2]float64{.5, .6},
-			},
-			"cozmo_4" : CozmoState{
-				Location : [2]float64{.7, .8},
-			},
-		},*/
-		RedTeam : sync.Map{},
-		RedTeamOculusId : 0,
-		RedFlagAtBase : true,
-		RedFlagBaseLocation : [2]float64{.5, .1},
-		
-		// initialize the blue team
-		/*BlueTeam : map[string]CozmoState{
-			"cozmo_5" : CozmoState{
-				Location : [2]float64{.9, .8},
-			},
-			"cozmo_6" : CozmoState{
-				Location : [2]float64{.7, .6},
-			},
-			"cozmo_7" : CozmoState{
-				Location : [2]float64{.5, .4},
-			},
-			"cozmo_8" : CozmoState{
-				Location : [2]float64{.3, .2},
-			},
-		},*/
-		BlueTeam : sync.Map{},
-		BlueTeamOculusId : 0,
-		BlueFlagAtBase : true,
-		BlueFlagBaseLocation : [2]float64{.5, .9},
-	}
-
-	// intialize the red team robots
-	game_states.RedTeam.Store("cozmo_1", CozmoState{
-		Location : [2]float64{.1, .2},
-	})
-	game_states.RedTeam.Store("cozmo_2", CozmoState{
-		Location : [2]float64{.3, .4},
-	})
-	game_states.RedTeam.Store("cozmo_3", CozmoState{
-		Location : [2]float64{.5, .6},
-	})
-	game_states.RedTeam.Store("cozmo_4", CozmoState{
-		Location : [2]float64{.7, .8},
-	})
-
-	// intiialize the blue team robots
-	game_states.BlueTeam.Store("cozmo_5", CozmoState{
-		Location : [2]float64{.9, .8},
-	})
-	game_states.BlueTeam.Store("cozmo_6", CozmoState{
-		Location : [2]float64{.7, .6},
-	})
-	game_states.BlueTeam.Store("cozmo_7", CozmoState{
-		Location : [2]float64{.5, .4},
-	})
-	game_states.BlueTeam.Store("cozmo_8", CozmoState{
-		Location : [2]float64{.3, .2},
-	})
+	log.Println("starting server")
+	game_states := reset_gamestate()
 
 	// handle registering an Oculus device to either the RedTeam or the BlueTeam
 	http.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
 		// run the ParseForm to pull the POST data, error if applicable
 		if err := r.ParseForm(); err != nil {
-			fmt.Fprintf(w, "failure: ParseForm() err: %v", err)
+			log.Println("/register failure: ParseForm() err: %v", err)
 			return
 		}
 
@@ -298,13 +291,11 @@ func main() {
 		OculusId, err := strconv.Atoi(r.FormValue("OculusId"))
 		if err != nil {
 			// don't assign the user to any team and return an error
+			log.Println("/register OculusId is not an integer")
 			response["Status"] = 400
 			response["OculusId"] = -1
 			response["Team"] = -1
 		}
-
-		fmt.Printf("BLUE ID%s", game_states.BlueTeamOculusId)
-		fmt.Printf("RED ID%s", game_states.RedTeamOculusId)
 
 		// prioritize assigning blue team first
 		if game_states.BlueTeamOculusId == 0 && game_states.RedTeamOculusId != OculusId {
@@ -313,6 +304,7 @@ func main() {
 			response["Status"] = 200
 			response["OculusId"] = OculusId
 			response["Team"] = 0
+			log.Println("/register registered Oculus ID %s to team BLUE", OculusId)
 			fmt.Printf("\nRegistered Oculus ID %s to team BLUE", OculusId)
 		} else if game_states.RedTeamOculusId == 0 && game_states.BlueTeamOculusId != OculusId {
 			// assign the user to the blue team
@@ -320,12 +312,14 @@ func main() {
 			response["Status"] = 200
 			response["OculusId"] = OculusId
 			response["Team"] = 1
+			log.Println("/register registered Oculus ID %s to team RED", OculusId)
 			fmt.Printf("\nRegistered Oculus ID %s to team RED", OculusId)
 		} else {
 			// don't assign the user to any team and return an error
 			response["Status"] = 400
 			response["OculusId"] = -1
 			response["Team"] = -1
+			log.Println("/register unable to register Oculus to a team. RED: %s, BLUE: %s, OculusId: %s", game_states.RedTeamOculusId, game_states.BlueTeamOculusId, OculusId)
 			fmt.Printf("\nFailed to register Oculus ID %d, either both teams are full, ID is 0, or the ID is already used", OculusId)
 		}
 
@@ -344,6 +338,7 @@ func main() {
 			case "POST":
 				// run the ParseForm to pull the POST data, error if applicable
 				if err := r.ParseForm(); err != nil {
+					log.Println("/put failure: ParseForm() err: %v", err)
 					fmt.Fprintf(w, "failure: ParseForm() err: %v", err)
 					return
 				}
@@ -360,6 +355,7 @@ func main() {
 				oculusInt, err := strconv.Atoi(oculus)
 				if err != nil {
 					// don't assign the user to any team and return an error
+					log.Println("/put OculusId %s is not an int", oculusInt)
 					fmt.Printf("Oculus is not an int")
 					return
 				}
@@ -373,6 +369,7 @@ func main() {
 					p_team = &game_states.BlueTeam
 					team_verified = oculusInt == game_states.BlueTeamOculusId
 				} else {
+					log.Println("/put failure: team %s must be RedTeam or BlueTeam", team)
 					fmt.Fprintf(w, "failure: team must be RedTeam or BlueTeam")
 					return
 				}
@@ -389,7 +386,7 @@ func main() {
 					_robotObject := robotObject.(CozmoState)
 					_robotObject.Location = processed_value
 					(*p_team).Store(robot, _robotObject)
-					
+					log.Println("/put updated location for team %s and robot %s", team, robot)
 				} else if field == "Waypoint" && team_verified {
 					// break the waypoint value into an array
 					err := json.Unmarshal([]byte(value), &processed_value)
@@ -401,14 +398,17 @@ func main() {
 					_robotObject := robotObject.(CozmoState)
 					_robotObject.Waypoint = processed_value
 					(*p_team).Store(robot, _robotObject)
+					log.Println("/put updated waypoint for team %s and robot %s", team, robot)
 				} else {
 					// send the error
+					log.Println("/put failure: field %s must be Location or Waypoint", field)
 					fmt.Fprintf(w, "failure: field must be Location or Waypoint")
 					return
 				}
 				fmt.Fprintf(w, "success: team=%s, robot=%s, field=%s, value=%s", team, robot, field, value)
 				
 			default:
+				log.Println("/put failure: need POST")
 				fmt.Fprintf(w, "failure: need POST")  // notify that we only use POST (in case Glen or Jenna get it wrong)
 			}
 		return
@@ -439,6 +439,7 @@ func main() {
 		var m map[string]interface{}
 		err := json.Unmarshal(b, &m)
 		if err != nil {
+			log.Printf("/get Unable to unmarshall")
 			fmt.Printf("Unable to unmarshall")
 		}
 
@@ -456,6 +457,23 @@ func main() {
 		return
     })
 
+	// resets the game state
+	http.HandleFunc("/reset", func(w http.ResponseWriter, r *http.Request) {
+		// run the ParseForm to pull the POST data, error if applicable
+		if err := r.ParseForm(); err != nil {
+			log.Println("/reset failure: ParseForm() err: %v", err)
+			fmt.Fprintf(w, "failure: ParseForm() err: %v", err)
+			return
+		}
+
+		if r.FormValue("key") == "RAIL" {
+			game_states = reset_gamestate()
+			fmt.Fprintf(w, "reset game state")
+		} else {
+			fmt.Fprintf(w, "incorrect reset key")
+		}
+	})
+
 	fmt.Printf("Running")
-    log.Fatal(http.ListenAndServe(":1000", nil))
+    log.Fatal(http.ListenAndServe(":1001", nil))
 }
