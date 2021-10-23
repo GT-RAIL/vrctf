@@ -1,7 +1,10 @@
 
-// citations:
+// Code Citations:
 // strtoint: https://stackoverflow.com/questions/4278430
 // foreach key in map: https://stackoverflow.com/questions/1841443/
+// foreach element in array: https://yourbasic.org/golang/for-loop-range-array-slice-map-channel/
+// assigning field to struct: https://stackoverflow.com/questions/42605337/
+
 
 package main
 
@@ -12,7 +15,6 @@ import (
     "net/http"
 	"strconv"
 	"math"
-	"sync"
 )
 
 type CozmoState struct {
@@ -25,16 +27,17 @@ type CozmoState struct {
 }
 
 type GameStates struct {
-	sync.RWMutex
 	RedTeam map[string]CozmoState  // states of the red team cozmos
-	RedTeamId int  // ID number of the red player's VR headset
+	RedTeamOculusId int  // ID number of the red player's VR headset
 	RedFlagAtBase bool  // whether the red team's flag is at their base
 	RedFlagBaseLocation [2]float64  // x/y location of the flag base
+	RedTeamScore int  // score of the red team
 
 	BlueTeam map[string]CozmoState  // states of the blue team cozmos
-	BlueTeamId int // ID number of the blue player's VR headset
+	BlueTeamOculusId int // ID number of the blue player's VR headset
 	BlueFlagAtBase bool // whether the blue team's flag is at their base
 	BlueFlagBaseLocation [2]float64  // x/y location of the flag base
+	BlueTeamScore int  // score of the blue team
 }
 
 // distance calculation
@@ -46,6 +49,8 @@ func dist(a [2]float64, b [2]float64) float64 {
 func engine(game_states *GameStates) {
 	// determine auras between each robot
 	aura_range := 0.15  // range at which robots connect
+	
+	robot_proximities := [][2]string{}  // names of robots from opposite teams in proximity to each other, so we can parse for flag transfers after calculating auras
 
 	// for each robot on the red team...
 	for red_robot_id, red_robot_state := range(game_states.RedTeam) {
@@ -58,11 +63,13 @@ func engine(game_states *GameStates) {
 		}
 
 		// for each robot on the blue team...
+		robot_proximities = nil  // reset the proximity list
 		for blue_robot_id, blue_robot_state := range(game_states.BlueTeam) {
 			// if the robots are close (enemies), reduce aura on both robots
 			if dist(red_robot_state.Location, blue_robot_state.Location) <= aura_range {
 				red_robot_state.AuraCount -= 1.0
 				blue_robot_state.AuraCount -= 1.0
+				robot_proximities = append(robot_proximities, [2]string{red_robot_id, blue_robot_id})  // note that these robots are proximal for red
 			}
 
 			// update the blue robot state
@@ -79,19 +86,27 @@ func engine(game_states *GameStates) {
 
 		// when the red robot approaches the blue base, flag logic
 		// if the blue flag is at the base AND the red robot is close to the blue flag base AND the red robot can move AND the red robot is not carrying a flag
-		if BlueFlagAtBase && dist(red_robot_state.Location, game_states.BlueFlagBaseLocation) <= aura_range && red_robot_state.CanMove && !red_robot_state.HasBlueFlag && !red_robot_state.HasRedFlag {
+		if game_states.BlueFlagAtBase && dist(red_robot_state.Location, game_states.BlueFlagBaseLocation) <= aura_range && red_robot_state.CanMove && !red_robot_state.HasBlueFlag && !red_robot_state.HasRedFlag {
 			// give the blue flag to this robot
 			red_robot_state.HasBlueFlag = true
 			game_states.BlueFlagAtBase = false
 		}
 
 		// when the red robot approaches the red base with the flag, flag logic:
-		// if the red robot has the flag AND the red base does not have the flag && the red robot is at the base AND the red robot can move
-		if red_robot_state.HasRedFlag && !game_states.RedFlagAtBase && dist(red_robot_state.Location, game_states.RedFlagBaseLocation)) <= aura_range && red_robot_state.CanMove {
+		// if the red robot has the flag AND the red base does not have the flag AND the red robot is at the base AND the red robot can move
+		if red_robot_state.HasRedFlag && !game_states.RedFlagAtBase && dist(red_robot_state.Location, game_states.RedFlagBaseLocation) <= aura_range && red_robot_state.CanMove {
 			// give the red flag to the base
 			red_robot_state.HasRedFlag = false
 			game_states.RedFlagAtBase = true
 		}
+
+		// when the red robot is on the red side with the blue flag, score
+		if red_robot_state.HasBlueFlag && red_robot_state.Location[1] > 0.5 {
+			red_robot_state.HasBlueFlag = false
+			game_states.BlueFlagAtBase = true
+			game_states.RedTeamScore += 1
+		}
+
 
 		// update the red robot state
 		game_states.RedTeam[red_robot_id] = red_robot_state
@@ -117,7 +132,7 @@ func engine(game_states *GameStates) {
 
 		// when the blue robot approaches the red base, flag logic
 		// if the red flag is at the base AND the blue robot is close to the red flag base AND the blue robot can move AND the blue robot is not carrying a flag
-		if RedFlagAtBase && dist(blue_robot_state.Location, game_states.RedFlagBaseLocation) <= aura_range && blue_robot_state.CanMove && !blue_robot_state.HasBlueFlag && !blue_robot_state.HasRedFlag {
+		if game_states.RedFlagAtBase && dist(blue_robot_state.Location, game_states.RedFlagBaseLocation) <= aura_range && blue_robot_state.CanMove && !blue_robot_state.HasBlueFlag && !blue_robot_state.HasRedFlag {
 			// give the blue flag to this robot
 			blue_robot_state.HasRedFlag = true
 			game_states.RedFlagAtBase = false
@@ -125,14 +140,77 @@ func engine(game_states *GameStates) {
 
 		// when the blue robot approaches the blue base with the flag, flag logic:
 		// if the blue robot has the flag AND the blue base does not have the flag && the blue robot is at the base AND the blue robot can move
-		if blue_robot_state.HasBlueFlag && !game_states.BlueFlagAtBase && dist(blue_robot_state.Location, game_states.BlueFlagBaseLocation)) <= aura_range && blue_robot_state.CanMove {
+		if blue_robot_state.HasBlueFlag && !game_states.BlueFlagAtBase && dist(blue_robot_state.Location, game_states.BlueFlagBaseLocation) <= aura_range && blue_robot_state.CanMove {
 			// give the blue flag to the base
 			blue_robot_state.HasBlueFlag = false
 			game_states.BlueFlagAtBase = true
 		}
+
+		// when the blue robot is on the blue side with the red flag, score
+		if blue_robot_state.HasRedFlag && blue_robot_state.Location[1] < 0.5 {
+			blue_robot_state.HasRedFlag = false
+			game_states.RedFlagAtBase = true
+			game_states.BlueTeamScore += 1
+		}
 		
 		// update the blue robot state
 		game_states.BlueTeam[blue_robot_id] = blue_robot_state
+	}
+
+	// when the robot approaches an enemy robot who is carrying a red or blue flag, flag logic
+	for _, robot_list := range robot_proximities {  // for each pair of proximal opposing robots
+		red_robot_id := robot_list[0]  // pull the red robot
+		blue_robot_id := robot_list[1]  // pull the blue robot
+		// red robot takes flag from blue robot
+		// if the blue robot has the (red flag OR blue flag) AND the red robot is not carrying a flag AND the blue robot cannot move AND the red robot can move
+		if (game_states.BlueTeam[blue_robot_id].HasRedFlag || game_states.BlueTeam[blue_robot_id].HasBlueFlag) && !(game_states.RedTeam[red_robot_id].HasRedFlag || game_states.RedTeam[red_robot_id].HasBlueFlag) && !game_states.BlueTeam[blue_robot_id].CanMove && game_states.RedTeam[red_robot_id].CanMove {
+			// transfer the flag from the blue robot to the red robot
+			if game_states.BlueTeam[blue_robot_id].HasRedFlag {  // if transferring the red flag to the red robot
+				if red_robot_state, ok := game_states.RedTeam[red_robot_id]; ok {  // pull the red team robot
+					red_robot_state.HasRedFlag = true  // add the red flag to the blue robot
+					game_states.RedTeam[red_robot_id] = red_robot_state  // put the struct back
+				}
+				if blue_robot_state, ok := game_states.BlueTeam[blue_robot_id]; ok {  // pull the blue team robot
+					blue_robot_state.HasRedFlag = false  // remove the red flag from the blue robot
+					game_states.BlueTeam[blue_robot_id] = blue_robot_state  // put the struct back
+				}
+			} else if game_states.BlueTeam[blue_robot_id].HasBlueFlag {  // if transferring the blue flag to the red robot
+				if red_robot_state, ok := game_states.RedTeam[red_robot_id]; ok {  // pull the red team robot
+					red_robot_state.HasBlueFlag = true  // remove the blue flag from the red robot
+					game_states.RedTeam[red_robot_id] = red_robot_state  // put the struct back
+				}
+				if blue_robot_state, ok := game_states.BlueTeam[blue_robot_id]; ok {  // pull the blue team robot
+					blue_robot_state.HasBlueFlag = false  // add the blue flag to the red robot
+					game_states.BlueTeam[blue_robot_id] = blue_robot_state  // put the struct back
+				}
+			}
+		}
+
+		// blue robot takes flag from red robot
+		// if the red robot has the (red flag OR blue flag) AND the blue robot is not carrying a flag AND the red robot cannot move AND the blue robot can move
+		if (game_states.RedTeam[red_robot_id].HasRedFlag || game_states.RedTeam[red_robot_id].HasBlueFlag) && !(game_states.BlueTeam[blue_robot_id].HasRedFlag || game_states.BlueTeam[blue_robot_id].HasBlueFlag) && !game_states.RedTeam[red_robot_id].CanMove && game_states.BlueTeam[blue_robot_id].CanMove {
+			// transfer the flag from the red robot to the blue robot
+			
+			if game_states.RedTeam[red_robot_id].HasRedFlag {  // if transferring the red flag to the blue robot
+				if red_robot_state, ok := game_states.RedTeam[red_robot_id]; ok {  // pull the red team robot
+					red_robot_state.HasRedFlag = false  // remove the red flag from the red robot
+					game_states.RedTeam[red_robot_id] = red_robot_state  // put the struct back
+				}
+				if blue_robot_state, ok := game_states.BlueTeam[blue_robot_id]; ok {  // pull the blu3 team robot
+					blue_robot_state.HasRedFlag = true  // add the red flag to the blue robot
+					game_states.BlueTeam[blue_robot_id] = blue_robot_state  // put the struct back
+				}
+			} else if game_states.RedTeam[red_robot_id].HasBlueFlag {  // if transfering the blue flag to the blue robot
+				if red_robot_state, ok := game_states.RedTeam[red_robot_id]; ok {  // pull the red team robot
+					red_robot_state.HasBlueFlag = false  // remove the blue flag from the red robot
+					game_states.RedTeam[red_robot_id] = red_robot_state  // put the struct back
+				}
+				if blue_robot_state, ok := game_states.BlueTeam[blue_robot_id]; ok {  // pull the blu3 team robot
+					blue_robot_state.HasBlueFlag = true  // add the blue flag to the blue robot
+					game_states.BlueTeam[blue_robot_id] = blue_robot_state  // put the struct back
+				}
+			}
+		}
 	}
 
 	return
@@ -157,8 +235,9 @@ func main() {
 				Location : [2]float64{.7, .8},
 			},*/
 		},
-		RedTeamId : 0,
+		RedTeamOculusId : 0,
 		RedFlagAtBase : true,
+		RedFlagBaseLocation : [2]float64{.5, .1},
 		
 		// initialize the blue team
 		BlueTeam : map[string]CozmoState{
@@ -175,8 +254,9 @@ func main() {
 				Location : [2]float64{.3, .2},
 			},*/
 		},
-		BlueTeamId : 0,
+		BlueTeamOculusId : 0,
 		BlueFlagAtBase : true,
+		BlueFlagBaseLocation : [2]float64{.5, .9},
 	}
 
 	// handle registering an Oculus device to either the RedTeam or the BlueTeam
@@ -199,20 +279,20 @@ func main() {
 			response["Team"] = -1
 		}
 
-		fmt.Printf("BLUE ID%s", game_states.BlueTeamId)
-		fmt.Printf("RED ID%s", game_states.RedTeamId)
+		fmt.Printf("BLUE ID%s", game_states.BlueTeamOculusId)
+		fmt.Printf("RED ID%s", game_states.RedTeamOculusId)
 
 		// prioritize assigning blue team first
-		if game_states.BlueTeamId == 0 && game_states.RedTeamId != OculusId {
+		if game_states.BlueTeamOculusId == 0 && game_states.RedTeamOculusId != OculusId {
 			// assign the user to the blue team
-			game_states.BlueTeamId = OculusId
+			game_states.BlueTeamOculusId = OculusId
 			response["Status"] = 200
 			response["OculusId"] = OculusId
 			response["Team"] = 0
 			fmt.Printf("\nRegistered Oculus ID %s to team BLUE", OculusId)
-		} else if game_states.RedTeamId == 0 && game_states.BlueTeamId != OculusId {
+		} else if game_states.RedTeamOculusId == 0 && game_states.BlueTeamOculusId != OculusId {
 			// assign the user to the blue team
-			game_states.BlueTeamId = OculusId
+			game_states.BlueTeamOculusId = OculusId
 			response["Status"] = 200
 			response["OculusId"] = OculusId
 			response["Team"] = 1
@@ -264,10 +344,10 @@ func main() {
 				var p_team *map[string]CozmoState;  // initialize a pointer to the team we are dealing with
 				if (team == "RedTeam") {
 					p_team = &game_states.RedTeam;
-					team_verified = oculusInt == game_states.RedTeamId
+					team_verified = oculusInt == game_states.RedTeamOculusId
 				} else if (team == "BlueTeam") {
 					p_team = &game_states.BlueTeam;
-					team_verified = oculusInt == game_states.BlueTeamId
+					team_verified = oculusInt == game_states.BlueTeamOculusId
 				} else {
 					fmt.Fprintf(w, "failure: team must be RedTeam or BlueTeam")
 					return
@@ -326,5 +406,5 @@ func main() {
     })
 
 	fmt.Printf("Running")
-    log.Fatal(http.ListenAndServe(":1000", nil))
+    log.Fatal(http.ListenAndServe(":1001", nil))
 }
