@@ -27,7 +27,7 @@ public class GameManager : MonoBehaviour
         StartCoroutine(GetTeamNumber(OculusID));
         // Now we know what team we're on (0=Blue, 1=Red). We won't change this from here on out
 
-
+        // Instantiate ghost players, which are the user-movable ones
     }
 
     // Update is called once per frame
@@ -36,12 +36,18 @@ public class GameManager : MonoBehaviour
         // Grab location data for both team's players
         StartCoroutine(GetRequest("http://143.215.60.21:1001/get")); 
 
-        // Update the board in VR (ghost players show actual locations)
+        
+        
 
         // Check for user input: new waypoints? (Don't do that during Update, actually. 
         // Have a trigger handler that selects the VR cozmo and do a drag-and-drop to a new location)
+        // Option 1: While cozmos are not being held, grab their position information to send to the server as waypoints
+        // (easier than Option 2, although perhaps less efficient)
+        // Option 2: Update the server only after a cozmo has been picked up, dropped, and stopped moving.
 
         // Send the location of the new waypoints
+
+        // Update the board in VR (ghost players show actual locations)
     }
 
 
