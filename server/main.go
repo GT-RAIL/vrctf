@@ -1,3 +1,8 @@
+
+// citations:
+// strtoint: https://stackoverflow.com/questions/4278430
+// 
+
 package main
 
 import (
@@ -5,6 +10,7 @@ import (
 	"encoding/json"
     "log"
     "net/http"
+	"strconv"
 )
 
 type CozmoState struct {
@@ -40,6 +46,7 @@ func main() {
 				Location : [2]float64{.7, .8},
 			},
 		},
+		RedTeamId : 0,
 		
 		// initialize the blue team
 		BlueTeam : map[string]CozmoState{
@@ -56,8 +63,58 @@ func main() {
 				Location : [2]float64{.3, .2},
 			},
 		},
+		BlueTeamId : 0,
 	}
-	
+
+	// handle registering an Oculus device to either the RedTeam or the BlueTeam
+	http.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
+		// run the ParseForm to pull the POST data, error if applicable
+		if err := r.ParseForm(); err != nil {
+			fmt.Fprintf(w, "failure: ParseForm() err: %v", err)
+			return
+		}
+
+		// create the response object
+		response := map[string]int{}
+
+		// get the Oculus' desired ID
+		OculusId, err := strconv.Atoi(r.FormValue("OculusId"))
+		if err != nil {
+			// don't assign the user to any team and return an error
+			response["status"] = 400
+			response["OculusId"] = -1
+			response["Team"] = -1
+		}
+
+		// prioritize assigning blue team first
+		if game_states.BlueTeamId == 0 && game_states.RedTeamId != OculusId {
+			// assign the user to the blue team
+			game_states.BlueTeamId = OculusId
+			response["status"] = 200
+			response["OculusId"] = OculusId
+			response["Team"] = 0
+			fmt.Printf("\nRegistered Oculus ID %s to team BLUE", OculusId)
+		} else if game_states.RedTeamId == 0 && game_states.BlueTeamId != OculusId {
+			// assign the user to the blue team
+			game_states.BlueTeamId = OculusId
+			response["status"] = 200
+			response["OculusId"] = OculusId
+			response["Team"] = 1
+			fmt.Printf("\nRegistered Oculus ID %s to team RED", OculusId)
+		} else {
+			// don't assign the user to any team and return an error
+			response["status"] = 400
+			response["OculusId"] = -1
+			response["Team"] = -1
+			fmt.Printf("\nFailed to register Oculus ID %d, either both teams are full, ID is 0, or the ID is already used", OculusId)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)		
+		b, _ := json.Marshal(response)
+		fmt.Fprintf(w, "%s", b)
+		return
+	})
 
 	// handle setting robot locations (used by the Cozmo controller)
     http.HandleFunc("/put", func(w http.ResponseWriter, r *http.Request) {
@@ -70,10 +127,10 @@ func main() {
 					return
 				}
 				// process the robot, field, and value
-				team := r.FormValue("team")  // team name
-				robot := r.FormValue("robot")  // robot name
-				field := r.FormValue("field")  // field name
-				value := r.FormValue("value")  // value for field
+				team := r.FormValue("Team")  // team name
+				robot := r.FormValue("Robot")  // robot name
+				field := r.FormValue("Field")  // field name
+				value := r.FormValue("Value")  // value for field
 				var processed_value [2]float64  // placeholder for the processed value
 
 				// get the pointer to the team we are changing
@@ -117,6 +174,7 @@ func main() {
 						(*p_team)[robot] = robotObject
 					}
 				} else {
+					// send the error
 					fmt.Fprintf(w, "failure: field must be Location or Waypoint")
 					return
 				}
@@ -125,6 +183,7 @@ func main() {
 			default:
 				fmt.Fprintf(w, "failure: need POST")  // notify that we only use POST (in case Glen or Jenna get it wrong)
 			}
+		return
     })
 
 	// handle getting the game states (used by the VR)
@@ -133,6 +192,7 @@ func main() {
 		w.WriteHeader(http.StatusCreated)		
 		b, _ := json.Marshal(game_states)
 		fmt.Fprintf(w, "%s", b)
+		return
     })
 
 	fmt.Printf("Running")
