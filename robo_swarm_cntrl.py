@@ -22,17 +22,13 @@ Each robot requires its own device to control it.
 import asyncio
 import cozmo
 from cozmo.util import degrees, Pose
+import cozmo.lights
 import sys
-
 #  Used for communication with the server
 import json
 import urllib.request
-
-#  Used for calculating waypoints for robots
-import math
-
-#  Used for testing purposes
-import unittest
+import math #  Used for calculating waypoints for robots
+import unittest #  Used for testing purposes
 
 #  Globals Describing Team Composition
 TEAMS = ['RedTeam', 'BlueTeam']
@@ -45,7 +41,14 @@ SERVER_PUT = SERVER + "/put"
 
 #  Testing globals for unittest
 TEST_NUM_ROBOTS = 2
-TESTING = True
+TESTING = False
+RUN = False
+
+#  Global Color Variables
+RED_TEAM_COLOR = cozmo.lights.red_light
+RED_TEAM_FLAG = cozmo.lights.Color(rgb=(255, 0, 255))
+BLUE_TEAM_COLOR = cozmo.lights.blue_light
+BLUE_TEAM_FLAG = cozmo.lights.Color(rgb=(0, 255, 255))
 
 
 # Enumerates basic setup functions for the cozmo including logging
@@ -53,6 +56,7 @@ TESTING = True
 #
 #
 def setup_cozmos():
+    # Set up cozmo by getting an event object and setting up logging
     cozmo.setup_basic_logging()
     loop = asyncio.get_event_loop()
     return loop
@@ -66,16 +70,19 @@ def setup_cozmos():
 # \returns a list of robot objects
 #
 def enumerate_robot_conn(event_loop):
+    #  Helpful globals
     global BOT_NAMES
     global TEAMS
     global SERVER_GET
+
+    #  Get the data from the sever and initialize team names, bot names and number of robots
     with urllib.request.urlopen(SERVER_GET) as url:
         data = json.loads(url.read().decode())
     for team in TEAMS:
         BOT_NAMES.extend(list(data[team].keys()))
-
     num_robots = len(BOT_NAMES)
 
+    #  Connect to each of the robots
     robot_con_list = []
     for i in range(num_robots):
         try:
@@ -86,36 +93,33 @@ def enumerate_robot_conn(event_loop):
     return robot_con_list
 
 
-# A function that takes a list of robot connection objects and poses and bring the robots to those poses
+# A function that returns the current locations of all robots
 #
-# \param matrix_cell
-# \param parent
+# \param a list of robot connection objects that is used to fetch their poses
 #
-async def move_robots_to_waypoint(robot_con_list, pose_list):
-    robots = []
+def get_robot_pose(robot_con_list):
+    #  Get all the robot poses
+    poses = []
     for robot_con in robot_con_list:
-        robots.append(await robot_con.wait_for_robot())
-
-    movements = []
-    for robot, pose in zip(robots, pose_list):
-        move = robot.go_to_pose(pose=Pose(pose[0], pose[1], 0, angle_z=degrees(0)), relative_to_robot=True)
-        movements.append(move)
-
-    for move in movements:
-        await move.wait_for_completed()
+        robot = await robot_con.wait_for_robot()
+        poses.append(robot.pose)
+    return poses
 
 
 # A function that checks a sever for poses and returns a list of poses
 #
 def get_waypoints():
+    #  Helpful globals an initialization
     global BOT_NAMES
     global SERVER_GET
     waypoints = []
     should_move = []
 
+    #  Load the data from server
     with urllib.request.urlopen(SERVER_GET) as url:
         data = json.loads(url.read().decode())
 
+    #  Put the data from the server into a list and create the list of waypoints and move booleans
     bot_info = {}
     for team in TEAMS:
         bot_info.update(data[team])
@@ -135,37 +139,49 @@ def edit_waypoints(current_poses, waypoints, should_move_list):
     edit_poses = []
     for current_pose, waypoint, should_move in zip(current_poses, waypoints, should_move_list):
         if should_move:
+            # calc the hypotenous and make a singe step waypoint
             waypoint_hyp = math.sqrt((current_pose[0] - waypoint[0]) ** 2 + (current_pose[1] - waypoint[1]) ** 2)
             new_x = (current_pose[0] - waypoint[0])/waypoint_hyp
             new_y = (current_pose[1] - waypoint[1])/waypoint_hyp
             edit_poses.append([new_x, new_y])
         else:
-            edit_poses.append([0, 0])
+            # if robots cant move make current waypoint be its location
+            edit_poses.append([current_pose[0], current_pose[1]])
 
     return edit_poses
 
 
-# A function that returns the current locations of all robots
+# A function that takes a list of robot connection objects and poses and bring the robots to those poses
 #
-# \param a list of robot connection objects that is used to fetch their poses
+# \param a list of robot connection objects that is used to send their waypoints
+# \param a list of waypoints
 #
-async def get_robot_pose(robot_con_list):
-    poses = []
+async def move_robots_to_waypoint(robot_con_list, waypoint_list):
+    robots = []
     for robot_con in robot_con_list:
-        robot = await robot_con.wait_for_robot()
-        poses.append(robot.pose)
-    return poses
+        robots.append(await robot_con.wait_for_robot())
+
+    movements = []
+    for robot, waypoint in zip(robots, waypoint_list):
+        move = robot.go_to_pose(pose=Pose(waypoint[0], waypoint[1], 0, angle_z=degrees(0)), relative_to_robot=True)
+        movements.append(move)
+
+    for move in movements:
+        await move.wait_for_completed()
 
 
 # A function that sends to a server the poses of each robot in a team
 #
-# \param a list of robot connection objects that is used to fetch their poses
+# \param a list of robot connection objects that is used to send their poses
 #
 def send_poses(robot_con_list):
+    #  Helpful globals
     global BOT_NAMES
     global TEAMS
     global SERVER_GET
     global SERVER_PUT
+
+    # get the robots poses and add them to a json object to be returned
     poses = get_robot_pose(robot_con_list=robot_con_list)
     with urllib.request.urlopen(SERVER_GET) as url:
         data = json.loads(url.read().decode())
@@ -174,7 +190,33 @@ def send_poses(robot_con_list):
                 data[TEAMS[0][bot]] = pose
             if bot in data[TEAMS[1]]():
                 data[TEAMS[1][bot]] = pose
-        urllib.requests.post(SERVER_PUT, json=data)
+        #  send the constructed json object
+        urllib.request.Request(SERVER_PUT, data)
+
+
+# A function that lights a cozmos led to determine its team and flag
+#
+# \param a list of robot connection objects that is used to change their leds
+#
+def light_led(robot_con_list):
+    # helpful globals
+    global SERVER_GET
+    global RED_TEAM_COLOR
+    global RED_TEAM_FLAG
+    global BL
+    # get information from the server
+    with urllib.request.urlopen(SERVER_GET) as url:
+        data = json.loads(url.read().decode())
+
+    # light the robots up with their team color and an indicator of if they are holding the flag
+    robots = []
+    for robot_con in robot_con_list:
+        robot = await robot_con.wait_for_robot()
+
+        robot.set_all_backpack_lights(RED_TEAM_COLOR)
+        robot.set_all_backpack_lights(BLUE_TEAM_COLOR)
+        robot.set_all_backpack_lights(RED_TEAM_FLAG)
+        robot.set_all_backpack_lights(BLUE_TEAM_FLAG)
 
 
 # A function runs the robots through a collection of waypoints pulled from a server
@@ -185,11 +227,13 @@ def run_robo_wrangler():
     robot_cons = enumerate_robot_conn(event_loop)  # create a list containing the information needed to communicate with all the cozmos
 
     while True:
-        waypoints, should_move_list = get_waypoints()  # gets the poses from the server
         current_poses = get_robot_pose(robot_con_list=robot_cons)  # get a list of the robots current locations
+        waypoints, should_move_list = get_waypoints()  # gets the poses from the server
         edited_poses = edit_waypoints(current_poses=current_poses, waypoints=waypoints, should_move_list=should_move_list)  # gives a partial waypoint on the way to final goal waypoint
-        event_loop.run_until_complete(move_robots_to_waypoint(robot_con_list=robot_cons, pose_list=edited_poses))  # Move the robots to a specified pose
+        event_loop.run_until_complete(move_robots_to_waypoint(robot_con_list=robot_cons, waypoint_list=edited_poses))  # Move the robots to a specified pose
+        light_led(robot_con_list=robot_cons)  # change the robot leds to show team and flag position
         send_poses(robot_con_list=robot_cons)  # move the robots towards their goal location
+
 
 class TestRoboWrangler(unittest.TestCase):
     def test_Enumerate(self):
@@ -206,13 +250,12 @@ class TestRoboWrangler(unittest.TestCase):
         edited_waypoints = edit_waypoints(current_poses=current_poses, waypoints=waypoints, should_move_list=should_move_list)  #
         self.assertLess(edited_waypoints, waypoints)
 
-
     def test_send(self):
         loop = setup_cozmos()
         robot_cons = enumerate_robot_conn(loop)
-        true_pose = get_robot_pose()
+        true_pose = get_robot_pose(robot_con_list=robot_cons)
         send_poses(robot_con_list=robot_cons)  # move the robots towards their goal location
-        server_poses = get_robot_pose()
+        server_poses = get_robot_pose(robot_con_list=robot_cons)
         self.assertEqual(true_pose, server_poses)
 
     def test_robot_move(self):
@@ -220,13 +263,14 @@ class TestRoboWrangler(unittest.TestCase):
         loop = setup_cozmos()
         robot_cons = enumerate_robot_conn(loop)
         pose_list = []
-        for i in range(TEST_NUM_ROBOTS)
-            pose_list.append([20,0])
+        for i in range(TEST_NUM_ROBOTS):
+            pose_list.append([20, 0])
         move_robots_to_waypoint(robot_cons, pose_list)
 
 
 if __name__ == '__main__':
     if TESTING:
         unittest.main()
-    run_robo_wrangler()
-
+    if RUN:
+        run_robo_wrangler()
+    get_waypoints()
