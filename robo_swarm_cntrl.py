@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) 2016 Anki, Inc.
+# Copyright (c) 2021 RAIL LAB
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,8 +27,8 @@ import sys
 #  Used for communication with the server
 import json
 import urllib.request
-import math #  Used for calculating waypoints for robots
-import unittest #  Used for testing purposes
+import math  # Used for calculating waypoints for robots
+import unittest  # Used for testing purposes
 
 #  Globals Describing Team Composition
 TEAMS = ['RedTeam', 'BlueTeam']
@@ -139,7 +139,7 @@ def edit_waypoints(current_poses, waypoints, should_move_list):
     edit_poses = []
     for current_pose, waypoint, should_move in zip(current_poses, waypoints, should_move_list):
         if should_move:
-            # calc the hypotenous and make a singe step waypoint
+            # calc the hypotenuse and make a singe step waypoint
             waypoint_hyp = math.sqrt((current_pose[0] - waypoint[0]) ** 2 + (current_pose[1] - waypoint[1]) ** 2)
             new_x = (current_pose[0] - waypoint[0])/waypoint_hyp
             new_y = (current_pose[1] - waypoint[1])/waypoint_hyp
@@ -203,7 +203,8 @@ def light_led(robot_con_list):
     global SERVER_GET
     global RED_TEAM_COLOR
     global RED_TEAM_FLAG
-    global BL
+    global BLUE_TEAM_COLOR
+    global BLUE_TEAM_FLAG
     # get information from the server
     with urllib.request.urlopen(SERVER_GET) as url:
         data = json.loads(url.read().decode())
@@ -236,12 +237,14 @@ def run_robo_wrangler():
 
 
 class TestRoboWrangler(unittest.TestCase):
+    # Test that the setup and enumerate robot function works as intended
     def test_Enumerate(self):
         global TEST_NUM_ROBOTS
         loop = setup_cozmos()
         robot_con_list = enumerate_robot_conn(loop)
         self.assertTrue(len(robot_con_list), TEST_NUM_ROBOTS)
 
+    # Test that the get waypoints and edit waypoints functions work
     def test_get_waypoints_and_edit(self):
         loop = setup_cozmos()
         robot_cons = enumerate_robot_conn(loop)
@@ -250,6 +253,7 @@ class TestRoboWrangler(unittest.TestCase):
         edited_waypoints = edit_waypoints(current_poses=current_poses, waypoints=waypoints, should_move_list=should_move_list)  #
         self.assertLess(edited_waypoints, waypoints)
 
+    # test that the send poses function works
     def test_send(self):
         loop = setup_cozmos()
         robot_cons = enumerate_robot_conn(loop)
@@ -258,6 +262,7 @@ class TestRoboWrangler(unittest.TestCase):
         server_poses = get_robot_pose(robot_con_list=robot_cons)
         self.assertEqual(true_pose, server_poses)
 
+    # test that we can actually move the robots
     def test_robot_move(self):
         global TEST_NUM_ROBOTS
         loop = setup_cozmos()
@@ -269,8 +274,12 @@ class TestRoboWrangler(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    if TESTING:
-        unittest.main()
+    # RUn the full code
     if RUN:
         run_robo_wrangler()
-    get_waypoints()
+    # Unittest that confirm everything is working as expected
+    elif TESTING:
+        unittest.main()
+    # Debug code
+    else:
+        get_waypoints()
