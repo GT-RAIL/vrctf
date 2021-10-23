@@ -45,10 +45,13 @@ TESTING = False
 RUN = False
 
 #  Global Color Variables
-RED_TEAM_COLOR = cozmo.lights.red_light
-RED_TEAM_FLAG = cozmo.lights.Color(rgb=(255, 0, 255))
-BLUE_TEAM_COLOR = cozmo.lights.blue_light
-BLUE_TEAM_FLAG = cozmo.lights.Color(rgb=(0, 255, 255))
+RED_TEAM_COLOR = cozmo.lights.Color(rgb=(150, 0, 0))
+RED_TEAM_RED_FLAG = cozmo.lights.Color(rgb=(255, 0, 0))
+RED_TEAM_BLUE_FLAG = cozmo.lights.Color(rgb=(255, 0, 255))
+
+BLUE_TEAM_COLOR = cozmo.lights.Color(rgb=(0, 0, 150))
+BLUE_TEAM_BLUE_FLAG = cozmo.lights.Color(rgb=(0, 0, 255))
+BLUE_TEAM_RED_FLAG = cozmo.lights.Color(rgb=(0, 255, 255))
 
 
 # Enumerates basic setup functions for the cozmo including logging
@@ -97,7 +100,7 @@ def enumerate_robot_conn(event_loop):
 #
 # \param a list of robot connection objects that is used to fetch their poses
 #
-def get_robot_pose(robot_con_list):
+async def get_robot_pose(robot_con_list):
     #  Get all the robot poses
     poses = []
     for robot_con in robot_con_list:
@@ -198,32 +201,44 @@ def send_poses(robot_con_list):
 #
 # \param a list of robot connection objects that is used to change their leds
 #
-def light_led(robot_con_list):
+async def light_led(robot_con_list):
     # helpful globals
     global SERVER_GET
+    global BOT_NAMES
     global RED_TEAM_COLOR
-    global RED_TEAM_FLAG
+    global RED_TEAM_RED_FLAG
+    global RED_TEAM_BLUE_FLAG
     global BLUE_TEAM_COLOR
-    global BLUE_TEAM_FLAG
+    global BLUE_TEAM_BLUE_FLAG
+    global BLUE_TEAM_RED_FLAG
     # get information from the server
     with urllib.request.urlopen(SERVER_GET) as url:
         data = json.loads(url.read().decode())
 
     # light the robots up with their team color and an indicator of if they are holding the flag
     robots = []
-    for robot_con in robot_con_list:
+    for robot_con, bot in zip(robot_con_list, BOT_NAMES):
         robot = await robot_con.wait_for_robot()
-
-        robot.set_all_backpack_lights(RED_TEAM_COLOR)
-        robot.set_all_backpack_lights(BLUE_TEAM_COLOR)
-        robot.set_all_backpack_lights(RED_TEAM_FLAG)
-        robot.set_all_backpack_lights(BLUE_TEAM_FLAG)
+        if bot in data[TEAMS[0]].keys():
+            if data[TEAMS[0]]['HasBlueFlag']:
+                robot.set_all_backpack_lights(RED_TEAM_BLUE_FLAG)
+            elif data[TEAMS[0]]['HasRedFlag']:
+                robot.set_all_backpack_lights(RED_TEAM_RED_FLAG)
+            else:
+                robot.set_all_backpack_lights(RED_TEAM_COLOR)
+        if bot in data[TEAMS[1]].keys():
+            if data[TEAMS[1]]['HasBlueFlag']:
+                robot.set_all_backpack_lights(BLUE_TEAM_BLUE_FLAG)
+            elif data[TEAMS[1]]['HasRedFlag']:
+                robot.set_all_backpack_lights(BLUE_TEAM_RED_FLAG)
+            else:
+                robot.set_all_backpack_lights(BLUE_TEAM_COLOR)
 
 
 # A function runs the robots through a collection of waypoints pulled from a server
 #
 #
-def run_robo_wrangler():
+def wrangle_robots():
     event_loop = setup_cozmos()  # set up all needed cozmo functions
     robot_cons = enumerate_robot_conn(event_loop)  # create a list containing the information needed to communicate with all the cozmos
 
@@ -276,7 +291,7 @@ class TestRoboWrangler(unittest.TestCase):
 if __name__ == '__main__':
     # RUn the full code
     if RUN:
-        run_robo_wrangler()
+        wrangle_robots()
     # Unittest that confirm everything is working as expected
     elif TESTING:
         unittest.main()
