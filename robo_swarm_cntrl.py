@@ -35,9 +35,10 @@ import time # Time used for wait
 #  Globals Describing Team Composition
 TEAMS = ['RedTeam', 'BlueTeam']
 BOT_NAMES = []
+ROBOT_OBJ = []
 
 #  Servers Describing Server Config
-SERVER = "http://3485-2610-148-1f02-3000-b082-3101-7d86-202.ngrok.io"
+SERVER = "http://1f82-2610-148-1f02-3000-b082-3101-7d86-202.ngrok.io"
 SERVER_GET = SERVER + "/get"
 SERVER_PUT = SERVER + "/put"
 
@@ -47,13 +48,14 @@ TESTING = False
 RUN = True
 
 #  Global Color Variables
-RED_TEAM_COLOR = cozmo.lights.Color(rgb=(150, 0, 0))
-RED_TEAM_RED_FLAG = cozmo.lights.Color(rgb=(255, 0, 0))
-RED_TEAM_BLUE_FLAG = cozmo.lights.Color(rgb=(255, 0, 255))
-
-BLUE_TEAM_COLOR = cozmo.lights.Color(rgb=(0, 0, 150))
-BLUE_TEAM_BLUE_FLAG = cozmo.lights.Color(rgb=(0, 0, 255))
-BLUE_TEAM_RED_FLAG = cozmo.lights.Color(rgb=(0, 255, 255))
+# Red
+RED_TEAM_COLOR = cozmo.lights.Light(cozmo.lights.Color(rgb=(150, 0, 0)))
+RED_TEAM_RED_FLAG = cozmo.lights.Light(cozmo.lights.Color(rgb=(255, 0, 0)))
+RED_TEAM_BLUE_FLAG = cozmo.lights.Light(cozmo.lights.Color(rgb=(255, 0, 255)))
+# Blue
+BLUE_TEAM_COLOR = cozmo.lights.Light(cozmo.lights.Color(rgb=(0, 0, 150)))
+BLUE_TEAM_BLUE_FLAG = cozmo.lights.Light(cozmo.lights.Color(rgb=(0, 0, 255)))
+BLUE_TEAM_RED_FLAG = cozmo.lights.Light(cozmo.lights.Color(rgb=(0, 255, 255)))
 
 
 # Enumerates basic setup functions for the cozmo including logging
@@ -110,12 +112,17 @@ def enumerate_robot_conn(event_loop):
 # \param a list of robot connection objects that is used to fetch their poses
 #
 def get_robot_pose(robot_con_list):
+    global ROBOT_OBJ
     #  Get all the robot poses
     poses = []
     robots = []
     loop = asyncio.get_event_loop()
-    for robot_con in robot_con_list:
-        robots.append(loop.run_until_complete(robot_con.wait_for_robot()))
+    if ROBOT_OBJ == []:
+        for robot_con in robot_con_list:
+            robots.append(loop.run_until_complete(robot_con.wait_for_robot()))
+    else:
+        robots = ROBOT_OBJ
+    ROBOT_OBJ = robots
     for robot in robots:
         poses.append([robot.pose.position.x, robot.pose.position.y])
 
@@ -152,19 +159,19 @@ def get_waypoints():
 # \param a list of robot connection objects that is used to fetch their poses
 #
 def edit_waypoints(current_poses, waypoints, should_move_list):
-    edit_poses = []
+    edited_waypoints = []
     for current_pose, waypoint, should_move in zip(current_poses, waypoints, should_move_list):
         if should_move:
             # calc the hypotenuse and make a singe step waypoint
             waypoint_hyp = math.sqrt((current_pose[0] - waypoint[0]) ** 2 + (current_pose[1] - waypoint[1]) ** 2)
-            new_x = (current_pose[0] - waypoint[0])/waypoint_hyp
-            new_y = (current_pose[1] - waypoint[1])/waypoint_hyp
-            edit_poses.append([new_x, new_y])
+            new_x = float(current_pose[0] - waypoint[0]+20)/(waypoint_hyp +1)
+            new_y = float(current_pose[1] - waypoint[1])/(waypoint_hyp +1)
+            edited_waypoints.append([new_x, new_y])
         else:
             # if robots cant move make current waypoint be its location
-            edit_poses.append([current_pose[0], current_pose[1]])
+            edited_waypoints.append([current_pose[0], current_pose[1]])
 
-    return edit_poses
+    return edited_waypoints
 
 
 # A function that takes a list of robot connection objects and poses and bring the robots to those poses
@@ -173,9 +180,15 @@ def edit_waypoints(current_poses, waypoints, should_move_list):
 # \param a list of waypoints
 #
 async def move_robots_to_waypoint(robot_con_list, waypoint_list):
+    global  ROBOT_OBJ
     robots = []
-    for robot_con in robot_con_list:
-        robots.append(await robot_con.wait_for_robot())
+
+    if ROBOT_OBJ == []:
+        for robot_con in robot_con_list:
+            robots.append(await robot_con.wait_for_robot())
+        ROBOT_OBJ = robots
+    else:
+         robots = ROBOT_OBJ
 
     movements = []
     for robot, waypoint in zip(robots, waypoint_list):
@@ -196,6 +209,7 @@ def send_poses(robot_con_list):
     global TEAMS
     global SERVER_GET
     global SERVER_PUT
+    global ROBOT_OBJ
 
     # get the robots poses and add them to a json object to be returned
     poses = get_robot_pose(robot_con_list=robot_con_list)
@@ -229,7 +243,7 @@ def send_poses(robot_con_list):
 #
 # \param a list of robot connection objects that is used to change their leds
 #
-async def light_led(robot_con_list):
+def light_led(robot_con_list):
     # helpful globals
     global SERVER_GET
     global BOT_NAMES
@@ -239,25 +253,34 @@ async def light_led(robot_con_list):
     global BLUE_TEAM_COLOR
     global BLUE_TEAM_BLUE_FLAG
     global BLUE_TEAM_RED_FLAG
+    global ROBOT_OBJ
     # get information from the server
     with urllib.request.urlopen(SERVER_GET) as url:
         data = json.loads(url.read().decode())
 
     # light the robots up with their team color and an indicator of if they are holding the flag
     robots = []
-    for robot_con, bot in zip(robot_con_list, BOT_NAMES):
-        robot = await robot_con.wait_for_robot()
+    loop = asyncio.get_event_loop()
+    if ROBOT_OBJ == []:
+        for robot_con in robot_con_list:
+            robots.append(loop.run_until_complete(robot_con.wait_for_robot()))
+        ROBOT_OBJ = robots
+    else:
+        robots = ROBOT_OBJ
+
+
+    for robot, bot in zip(robots, BOT_NAMES):
         if bot in data[TEAMS[0]].keys():
-            if data[TEAMS[0]]['HasBlueFlag']:
+            if data[TEAMS[0]][bot]['HasBlueFlag']:
                 robot.set_all_backpack_lights(RED_TEAM_BLUE_FLAG)
-            elif data[TEAMS[0]]['HasRedFlag']:
+            elif data[TEAMS[0]][bot]['HasRedFlag']:
                 robot.set_all_backpack_lights(RED_TEAM_RED_FLAG)
             else:
                 robot.set_all_backpack_lights(RED_TEAM_COLOR)
         if bot in data[TEAMS[1]].keys():
-            if data[TEAMS[1]]['HasBlueFlag']:
+            if data[TEAMS[1]][bot]['HasBlueFlag']:
                 robot.set_all_backpack_lights(BLUE_TEAM_BLUE_FLAG)
-            elif data[TEAMS[1]]['HasRedFlag']:
+            elif data[TEAMS[1]][bot]['HasRedFlag']:
                 robot.set_all_backpack_lights(BLUE_TEAM_RED_FLAG)
             else:
                 robot.set_all_backpack_lights(BLUE_TEAM_COLOR)
@@ -269,7 +292,7 @@ async def light_led(robot_con_list):
 def wrangle_robots():
     event_loop = setup_cozmos()  # set up all needed cozmo functions
     robot_cons = enumerate_robot_conn(event_loop)  # create a list containing the information needed to communicate with all the cozmos
-
+    send_poses(robot_con_list=robot_cons)  # move the robots towards their goal location
     while True:
         current_poses = get_robot_pose(robot_con_list=robot_cons)  # get a list of the robots current locations
         waypoints, should_move_list = get_waypoints()  # gets the poses from the server
@@ -315,6 +338,18 @@ class TestRoboWrangler(unittest.TestCase):
         for i in range(TEST_NUM_ROBOTS):
             pose_list.append([20, 0])
         move_robots_to_waypoint(robot_cons, pose_list)
+
+    # test that we can actually set the robot LEDS
+    def test_robot_led(self):
+        loop = setup_cozmos()
+        robot_cons = enumerate_robot_conn(loop)
+        light_led(robot_cons)
+        while(True):
+            hi = 1
+
+    # test that  the entire system works
+    def test_run(self):
+        wrangle_robots()
 
 
 if __name__ == '__main__':
