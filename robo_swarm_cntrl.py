@@ -146,7 +146,7 @@ def get_waypoints():
     bot_info = {}
     for team in TEAMS:
         bot_info.update(data[team])
-    BOT_NAMES.extend(list(bot_info.keys()))
+    #BOT_NAMES.extend(list(bot_info.keys()))
     for bot in BOT_NAMES:
         waypoints.append(bot_info[bot]['Waypoint'])
         should_move.append(bot_info[bot]['CanMove'])
@@ -297,13 +297,19 @@ def wrangle_robots():
     event_loop = setup_cozmos()  # set up all needed cozmo functions
     robot_cons = enumerate_robot_conn(event_loop)  # create a list containing the information needed to communicate with all the cozmos
     send_poses(robot_con_list=robot_cons)  # move the robots towards their goal location
+    waypoints = []  # initially use an empty waypoints, so it can be compared for prior_waypoints
     while True:
         current_poses = get_robot_pose(robot_con_list=robot_cons)  # get a list of the robots current locations
+        prior_waypoints = [[x for x in y] for y in waypoints]  # copy the prior waypoints
         waypoints, should_move_list = get_waypoints()  # gets the poses from the server
-        edited_poses = edit_waypoints(current_poses=current_poses, waypoints=waypoints, should_move_list=should_move_list)  # gives a partial waypoint on the way to final goal waypoint
-        event_loop.run_until_complete(move_robots_to_waypoint(robot_con_list=robot_cons, waypoint_list=edited_poses))  # Move the robots to a specified pose
+        print("Waypoints", waypoints)
+
+        if waypoints != prior_waypoints:  # if the waypoints were updated send them to the robots
+            edited_poses = edit_waypoints(current_poses=current_poses, waypoints=waypoints, should_move_list=should_move_list)  # gives a partial waypoint on the way to final goal waypoint
+            event_loop.run_until_complete(move_robots_to_waypoint(robot_con_list=robot_cons, waypoint_list=edited_poses))  # Move the robots to a specified pose
+
         light_led(robot_con_list=robot_cons)  # change the robot leds to show team and flag position
-        print("Sending")
+        print("Sending position")
         send_poses(robot_con_list=robot_cons)  # move the robots towards their goal location
 
 
