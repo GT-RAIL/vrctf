@@ -27,22 +27,24 @@ import sys
 #  Used for communication with the server
 import json
 import urllib.request
+import urllib.parse
 import math  # Used for calculating waypoints for robots
 import unittest  # Used for testing purposes
+import time # Time used for wait
 
 #  Globals Describing Team Composition
 TEAMS = ['RedTeam', 'BlueTeam']
 BOT_NAMES = []
 
 #  Servers Describing Server Config
-SERVER = "http://143.215.60.21:1001"
+SERVER = "http://3485-2610-148-1f02-3000-b082-3101-7d86-202.ngrok.io"
 SERVER_GET = SERVER + "/get"
 SERVER_PUT = SERVER + "/put"
 
 #  Testing globals for unittest
-TEST_NUM_ROBOTS = 2
+TEST_NUM_ROBOTS = 3
 TESTING = False
-RUN = False
+RUN = True
 
 #  Global Color Variables
 RED_TEAM_COLOR = cozmo.lights.Color(rgb=(150, 0, 0))
@@ -77,6 +79,7 @@ def enumerate_robot_conn(event_loop):
     global BOT_NAMES
     global TEAMS
     global SERVER_GET
+    global ROBOT_OBJ
 
     #  Get the data from the sever and initialize team names, bot names and number of robots
     with urllib.request.urlopen(SERVER_GET) as url:
@@ -88,10 +91,16 @@ def enumerate_robot_conn(event_loop):
     #  Connect to each of the robots
     robot_con_list = []
     for i in range(num_robots):
-        try:
-            robot_con_list.append(cozmo.connect_on_loop(event_loop))
-        except cozmo.ConnectionError as e:
-            sys.exit("A connection error occurred: %s" % e)
+        trying_to_connect_again = True
+        while(trying_to_connect_again):
+            try:
+                robot_con_list.append(cozmo.connect_on_loop(event_loop))
+                trying_to_connect_again = False
+            except cozmo.ConnectionError as e:
+                print("A connection error occurred: %s" % e)
+                print("Will try to connect again in 2 seconds")
+                time.sleep(2)
+
 
     return robot_con_list
 
@@ -100,12 +109,16 @@ def enumerate_robot_conn(event_loop):
 #
 # \param a list of robot connection objects that is used to fetch their poses
 #
-async def get_robot_pose(robot_con_list):
+def get_robot_pose(robot_con_list):
     #  Get all the robot poses
     poses = []
+    robots = []
+    loop = asyncio.get_event_loop()
     for robot_con in robot_con_list:
-        robot = await robot_con.wait_for_robot()
-        poses.append(robot.pose)
+        robots.append(loop.run_until_complete(robot_con.wait_for_robot()))
+    for robot in robots:
+        poses.append([robot.pose.position.x, robot.pose.position.y])
+
     return poses
 
 
@@ -186,15 +199,30 @@ def send_poses(robot_con_list):
 
     # get the robots poses and add them to a json object to be returned
     poses = get_robot_pose(robot_con_list=robot_con_list)
+
+    #  Load the data from server
     with urllib.request.urlopen(SERVER_GET) as url:
         data = json.loads(url.read().decode())
-        for bot, pose in zip(BOT_NAMES, poses):
-            if bot in data[TEAMS[0]]():
-                data[TEAMS[0][bot]] = pose
-            if bot in data[TEAMS[1]]():
-                data[TEAMS[1][bot]] = pose
+
+    for bot, pose in zip(BOT_NAMES, poses):
+        put = {}
+        if bot in data[TEAMS[0]].keys():
+            x = pose[0]
+            y = pose[1]
+            put["Team"] = 'RedTeam'
+            put['Value'] = [x,y]
+        elif bot in data[TEAMS[1]].keys():
+            x = pose[0]
+            y = pose[1]
+            put["Team"] = 'BlueTeam'
+            put['Value'] = [x,y]
         #  send the constructed json object
-        urllib.request.Request(SERVER_PUT, data)
+        put['Field'] = 'Location'
+        put['OculusId'] = 0
+        put['Robot'] = bot
+        put = urllib.parse.urlencode(put).encode()
+        req = urllib.request.Request(SERVER_PUT, put)
+        urllib.request.urlopen(req)
 
 
 # A function that lights a cozmos led to determine its team and flag
@@ -257,6 +285,7 @@ class TestRoboWrangler(unittest.TestCase):
         global TEST_NUM_ROBOTS
         loop = setup_cozmos()
         robot_con_list = enumerate_robot_conn(loop)
+        print("Found " + str(len(robot_con_list)) + " robots")
         self.assertTrue(len(robot_con_list), TEST_NUM_ROBOTS)
 
     # Test that the get waypoints and edit waypoints functions work
@@ -266,7 +295,7 @@ class TestRoboWrangler(unittest.TestCase):
         waypoints, should_move_list = get_waypoints()  # gets the poses from the server
         current_poses = get_robot_pose(robot_con_list=robot_cons)  # get a list of the robots current locations
         edited_waypoints = edit_waypoints(current_poses=current_poses, waypoints=waypoints, should_move_list=should_move_list)  #
-        self.assertLess(edited_waypoints, waypoints)
+        self.assertIsNotNone(edited_waypoints)
 
     # test that the send poses function works
     def test_send(self):
@@ -274,8 +303,8 @@ class TestRoboWrangler(unittest.TestCase):
         robot_cons = enumerate_robot_conn(loop)
         true_pose = get_robot_pose(robot_con_list=robot_cons)
         send_poses(robot_con_list=robot_cons)  # move the robots towards their goal location
-        server_poses = get_robot_pose(robot_con_list=robot_cons)
-        self.assertEqual(true_pose, server_poses)
+        server_poses = get_robot_pose(robot_con_list=robot_cons) # get server data
+        #self.assertEqual(true_pose, server_poses)
 
     # test that we can actually move the robots
     def test_robot_move(self):
@@ -297,4 +326,10 @@ if __name__ == '__main__':
         unittest.main()
     # Debug code
     else:
-        get_waypoints()
+        loop = setup_cozmos()
+        bots = enumerate_robot_conn(loop)
+        while(True):
+            get_waypoints()
+            time.sleep(5)
+
+        print(waypoints)
