@@ -108,40 +108,113 @@ public class GameManager : MonoBehaviour
             blueScoreText.SetText("Blue Score: " + ((int) statusUpdate["BlueTeamScore"].n));
 
             GameObject go;
-            
-            for (int i = 1; i<=4; i++){
-                // ignore if the robot does not exist in the data sent
-                if (!statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]) {
-                    //Debug.Log("No data for cozmo_" + i.ToString());
-                    continue;
+            if (TeamName == "BlueTeam"){
+                for (int i = 1; i<=4; i++){
+                    // ignore if the robot does not exist in the data sent
+                    if (!statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]) {
+                        //Debug.Log("No data for cozmo_" + i.ToString());
+                        continue;
+                    }
+
+                    // get the game object for the robot
+                    go = GameObject.Find("anki_cozmo ( " + i.ToString() + ")");
+
+                    // update the robot's location
+                    float location_x = (float) statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["Location"][0].n;
+                    float location_y = (float) statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["Location"][1].n;
+                    go.transform.position = new Vector3(location_x + offset_x, 0.75f, location_y + offset_y);
+
+                    // update HasRedFlag
+                    if (statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["HasRedFlag"].b) {
+                        redFlag.transform.position = new Vector3(location_x + offset_x, 0.85f, location_y + offset_y);
+                    }
+                    
+                    // update HasBlueFlag                
+                    if (statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["HasBlueFlag"].b) {
+                        blueFlag.transform.position = new Vector3(location_x + offset_x, 0.85f, location_y + offset_y);
+                    }           
                 }
+        
+                for (int i = 5; i<=8; i++) {
+                    
+                    // update location
+                    if (!statusUpdate["RedTeam"]["cozmo_" + i.ToString()]) {
+                        //Debug.Log("No data for cozmo_" + i.ToString());
+                        continue;
+                    }
 
-                // get the game object for the robot
-                go = GameObject.Find("anki_cozmo ( " + i.ToString() + ")");
+                    go = GameObject.Find("anki_cozmo ( " + i.ToString() + ")");
 
-                // update the robot's location
-                float location_x = (float) statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["Location"][0].n;
-                float location_y = (float) statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["Location"][1].n;
-                go.transform.position = new Vector3(location_x + offset_x, 0.75f, location_y + offset_y);
+                    // update the robot's location
+                    float location_x = (float) statusUpdate["RedTeam"]["cozmo_" + i.ToString()]["Location"][0].n;
+                    float location_y = (float) statusUpdate["RedTeam"]["cozmo_" + i.ToString()]["Location"][1].n;
+                    go.transform.position = new Vector3(location_x + offset_x, 0.75f, location_y + offset_y);
 
-                // update HasRedFlag
-                if (statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["HasRedFlag"].b) {
-                    redFlag.transform.position = new Vector3(location_x + offset_x, 0.85f, location_y + offset_y);
+                    // update HasRedFlag
+                    if (statusUpdate["RedTeam"]["cozmo_" + i.ToString()]["HasRedFlag"].b) {
+                        redFlag.transform.position = new Vector3(location_x + offset_x, 0.85f, location_y + offset_y);
+                    }
+                    
+                    // update HasBlueFlag                
+                    if (statusUpdate["RedTeam"]["cozmo_" + i.ToString()]["HasBlueFlag"].b) {
+                        blueFlag.transform.position = new Vector3(location_x + offset_x, 0.85f, location_y + offset_y);
+                    }  
+
                 }
-                
-                // update HasBlueFlag                
-                if (statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["HasBlueFlag"].b) {
-                    redFlag.transform.position = new Vector3(location_x + offset_x, 0.85f, location_y + offset_y);
-                }           
             }
-    
-            for (int i = 5; i<=8; i++) {
-                go = GameObject.Find("cozmo_" + i);
-                // update location
-                // go.transform.position = new Vector3((float) (statusUpdate["RedTeam"]["cozmo_" + i]["Location"][0]), 0.75f, (float) (statusUpdate["RedTeam"]["cozmo_" + i]["Location"][1]));
+            if (TeamName == "RedTeam"){
+                for (int i = 1; i<=4; i++){
+                    // ignore if the robot does not exist in the data sent
+                    if (!statusUpdate["RedTeam"]["cozmo_" + i.ToString()]) {
+                        //Debug.Log("No data for cozmo_" + i.ToString());
+                        continue;
+                    }
 
-                // update HasRedFlag
-                // update HasBlueFlag
+                    // get the game object for the robot
+                    go = GameObject.Find("anki_cozmo ( " + i.ToString() + ")");
+
+                    // update the robot's location
+                    float location_x = (float) statusUpdate["RedTeam"]["cozmo_" + i.ToString()]["Location"][0].n;
+                    float location_y = (float) statusUpdate["RedTeam"]["cozmo_" + i.ToString()]["Location"][1].n;
+                    go.transform.position = new Vector3(location_x + offset_x, 0.75f, location_y + offset_y);
+
+                    // update HasRedFlag
+                    if (statusUpdate["RedTeam"]["cozmo_" + i.ToString()]["HasRedFlag"].b) {
+                        redFlag.transform.position = new Vector3(location_x + offset_x, 0.85f, location_y + offset_y);
+                    }
+                    
+                    // update HasBlueFlag                
+                    if (statusUpdate["RedTeam"]["cozmo_" + i.ToString()]["HasBlueFlag"].b) {
+                        blueFlag.transform.position = new Vector3(location_x + offset_x, 0.85f, location_y + offset_y);
+                    }           
+                }
+        
+                for (int i = 5; i<=8; i++) {
+                    
+                    // update location
+                    if (!statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]) {
+                        //Debug.Log("No data for cozmo_" + i.ToString());
+                        continue;
+                    }
+
+                    go = GameObject.Find("anki_cozmo ( " + i.ToString() + ")");
+
+                    // update the robot's location
+                    float location_x = (float) statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["Location"][0].n;
+                    float location_y = (float) statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["Location"][1].n;
+                    go.transform.position = new Vector3(location_x + offset_x, 0.75f, location_y + offset_y);
+
+                    // update HasRedFlag
+                    if (statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["HasRedFlag"].b) {
+                        redFlag.transform.position = new Vector3(location_x + offset_x, 0.85f, location_y + offset_y);
+                    }
+                    
+                    // update HasBlueFlag                
+                    if (statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["HasBlueFlag"].b) {
+                        blueFlag.transform.position = new Vector3(location_x + offset_x, 0.85f, location_y + offset_y);
+                    }  
+
+                }
             }
         }
     }
