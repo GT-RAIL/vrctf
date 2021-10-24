@@ -164,8 +164,12 @@ def edit_waypoints(current_poses, waypoints, should_move_list):
         if should_move:
             # calc the hypotenuse and make a singe step waypoint
             waypoint_hyp = math.sqrt((current_pose[0] - waypoint[0]) ** 2 + (current_pose[1] - waypoint[1]) ** 2)
-            new_x = float(current_pose[0] - waypoint[0]+20)/(waypoint_hyp +1)
-            new_y = float(current_pose[1] - waypoint[1])/(waypoint_hyp +1)
+            if(waypoint_hyp):
+                new_x = waypoint[0]#current_pose[0] - float(current_pose[0] - waypoint[0])/(waypoint_hyp)
+                new_y = waypoint[1]#current_pose[1] - float(current_pose[1] - waypoint[1])/(waypoint_hyp)
+            else:
+                new_x = float(current_pose[0])
+                new_y = float(current_pose[1])
             edited_waypoints.append([new_x, new_y])
         else:
             # if robots cant move make current waypoint be its location
@@ -192,11 +196,11 @@ async def move_robots_to_waypoint(robot_con_list, waypoint_list):
 
     movements = []
     for robot, waypoint in zip(robots, waypoint_list):
-        move = robot.go_to_pose(pose=Pose(waypoint[0], waypoint[1], 0, angle_z=degrees(0)), relative_to_robot=True)
-        movements.append(move)
+        move = robot.go_to_pose(pose=Pose(waypoint[0], waypoint[1], 0, angle_z=degrees(0)), relative_to_robot=True, in_parallel=True)
+        robot.set_head_angle(cozmo.util.Angle(degrees=0), in_parallel=True)
 
-    for move in movements:
-        await move.wait_for_completed()
+    #for move in movements:
+    #    await move.wait_for_completed()
 
 
 # A function that sends to a server the poses of each robot in a team
@@ -299,6 +303,7 @@ def wrangle_robots():
         edited_poses = edit_waypoints(current_poses=current_poses, waypoints=waypoints, should_move_list=should_move_list)  # gives a partial waypoint on the way to final goal waypoint
         event_loop.run_until_complete(move_robots_to_waypoint(robot_con_list=robot_cons, waypoint_list=edited_poses))  # Move the robots to a specified pose
         light_led(robot_con_list=robot_cons)  # change the robot leds to show team and flag position
+        print("Sending")
         send_poses(robot_con_list=robot_cons)  # move the robots towards their goal location
 
 
