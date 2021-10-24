@@ -228,12 +228,12 @@ def send_poses(robot_con_list):
             x = pose[0]
             y = pose[1]
             put["Team"] = 'RedTeam'
-            put['Value'] = [x,y]
+            put['Value'] = [x/600, y/600]
         elif bot in data[TEAMS[1]].keys():
             x = pose[0]
             y = pose[1]
             put["Team"] = 'BlueTeam'
-            put['Value'] = [x,y]
+            put['Value'] = [x/600, y/600]
         #  send the constructed json object
         put['Field'] = 'Location'
         put['OculusId'] = 0
