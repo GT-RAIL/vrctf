@@ -66,7 +66,7 @@ func reset_gamestate() GameStates{
 
 	// intialize the red team robots
 	game_states.RedTeam.Store("cozmo_1", CozmoState{
-		Location : [2]float64{.1, .2},
+		Location : [2]float64{.1, .5},
 	})
 	/*game_states.RedTeam.Store("cozmo_2", CozmoState{
 		Location : [2]float64{.3, .4},
@@ -79,13 +79,13 @@ func reset_gamestate() GameStates{
 	})*/
 
 	// intiialize the blue team robots
-	game_states.BlueTeam.Store("cozmo_5", CozmoState{
-		Location : [2]float64{.9, .8},
+	/*game_states.BlueTeam.Store("cozmo_5", CozmoState{
+		Location : [2]float64{.9, .5},
 	})
 	game_states.BlueTeam.Store("cozmo_6", CozmoState{
 		Location : [2]float64{.7, .6},
 	})
-	/*game_states.BlueTeam.Store("cozmo_7", CozmoState{
+	game_states.BlueTeam.Store("cozmo_7", CozmoState{
 		Location : [2]float64{.5, .4},
 	})
 	game_states.BlueTeam.Store("cozmo_8", CozmoState{
@@ -99,7 +99,7 @@ func reset_gamestate() GameStates{
 // uses the game states object to determine the HasFlag(s), CanMove, and FlagAtBase bools
 func engine(game_states *GameStates) {
 	// determine auras between each robot
-	aura_range := 0.15  // range at which robots connect
+	aura_range := 0.1  // range at which robots connect
 	
 	robot_proximities := [][2]string{}  // names of robots from opposite teams in proximity to each other, so we can parse for flag transfers after calculating auras
 
@@ -108,6 +108,13 @@ func engine(game_states *GameStates) {
 		_red_robot_state := red_robot_state.(CozmoState)
 		_red_robot_state.AuraCount = 0.0
 		game_states.RedTeam.Store(red_robot_id, _red_robot_state)
+		return true
+	})
+
+	game_states.BlueTeam.Range(func(blue_robot_id, blue_robot_state interface{}) bool {
+		_blue_robot_state := blue_robot_state.(CozmoState)
+		_blue_robot_state.AuraCount = 0.0
+		game_states.BlueTeam.Store(blue_robot_id, _blue_robot_state)
 		return true
 	})
 
@@ -134,8 +141,6 @@ func engine(game_states *GameStates) {
 			_blue_robot_AuraCount := 0.0
 			// if the robots are close (enemies), reduce aura on both robots
 			if dist(_red_robot_state.Location, _blue_robot_state.Location) <= aura_range {
-				_red_robot_AuraCount -= 1.0
-				_blue_robot_AuraCount -= 1.0
 				robot_proximities = append(robot_proximities, [2]string{red_robot_id.(string), blue_robot_id.(string)})  // note that these robots are proximal for red
 			}
 
@@ -147,11 +152,11 @@ func engine(game_states *GameStates) {
 
 		// if the red robot is on the blue side (y < 0.5), reduce aura by 0.5
 		if _red_robot_state.Location[1] < 0.5 {
-			_red_robot_state.AuraCount -= 0.5
+			_red_robot_AuraCount -= 0.5
 		}
 
 		// if the red robot's aura > 0, the robot can move
-		_red_robot_state.CanMove = _red_robot_state.AuraCount > 0
+		_red_robot_state.CanMove = _red_robot_AuraCount > 0
 
 		// when the red robot approaches the blue base, flag logic
 		// if the blue flag is at the base AND the red robot is close to the blue flag base AND the red robot can move AND the red robot is not carrying a flag
@@ -291,7 +296,7 @@ func main() {
 		OculusId, err := strconv.Atoi(r.FormValue("OculusId"))
 		if err != nil {
 			// don't assign the user to any team and return an error
-			log.Println("/register OculusId is not an integer")
+			log.Println("/register OculusId is not an integer", OculusId)
 			response["Status"] = 400
 			response["OculusId"] = -1
 			response["Team"] = -1
@@ -304,7 +309,7 @@ func main() {
 			response["Status"] = 200
 			response["OculusId"] = OculusId
 			response["Team"] = 0
-			log.Println("/register registered Oculus ID %s to team BLUE", OculusId)
+			log.Println("/register registered Oculus ID", OculusId, "to team BLUE")
 			fmt.Printf("\nRegistered Oculus ID %s to team BLUE", OculusId)
 		} else if game_states.RedTeamOculusId == 0 && game_states.BlueTeamOculusId != OculusId {
 			// assign the user to the blue team
@@ -312,15 +317,13 @@ func main() {
 			response["Status"] = 200
 			response["OculusId"] = OculusId
 			response["Team"] = 1
-			log.Println("/register registered Oculus ID %s to team RED", OculusId)
-			fmt.Printf("\nRegistered Oculus ID %s to team RED", OculusId)
+			log.Println("/register registered Oculus ID", OculusId, "to team RED")
 		} else {
 			// don't assign the user to any team and return an error
 			response["Status"] = 400
 			response["OculusId"] = -1
 			response["Team"] = -1
-			log.Println("/register unable to register Oculus to a team. RED: %s, BLUE: %s, OculusId: %s", game_states.RedTeamOculusId, game_states.BlueTeamOculusId, OculusId)
-			fmt.Printf("\nFailed to register Oculus ID %d, either both teams are full, ID is 0, or the ID is already used", OculusId)
+			log.Println("/register unable to register Oculus to a team. RED:", game_states.RedTeamOculusId, ", BLUE:", game_states.BlueTeamOculusId, "OculusId:", OculusId)
 		}
 
 		// send the response
@@ -355,7 +358,7 @@ func main() {
 				oculusInt, err := strconv.Atoi(oculus)
 				if err != nil {
 					// don't assign the user to any team and return an error
-					log.Println("/put OculusId %s is not an int", oculusInt)
+					log.Println("/put OculusId", oculus, "is not an int")
 					fmt.Printf("Oculus is not an int")
 					return
 				}
@@ -369,7 +372,7 @@ func main() {
 					p_team = &game_states.BlueTeam
 					team_verified = oculusInt == game_states.BlueTeamOculusId
 				} else {
-					log.Println("/put failure: team %s must be RedTeam or BlueTeam", team)
+					log.Println("/put failure: team", team, "must be RedTeam or BlueTeam")
 					fmt.Fprintf(w, "failure: team must be RedTeam or BlueTeam")
 					return
 				}
@@ -386,7 +389,7 @@ func main() {
 					_robotObject := robotObject.(CozmoState)
 					_robotObject.Location = processed_value
 					(*p_team).Store(robot, _robotObject)
-					log.Println("/put updated location for team %s and robot %s", team, robot)
+					log.Println("/put updated location for team", team, "and robot", robot)
 				} else if field == "Waypoint" && team_verified {
 					// break the waypoint value into an array
 					err := json.Unmarshal([]byte(value), &processed_value)
@@ -398,13 +401,14 @@ func main() {
 					_robotObject := robotObject.(CozmoState)
 					_robotObject.Waypoint = processed_value
 					(*p_team).Store(robot, _robotObject)
-					log.Println("/put updated waypoint for team %s and robot %s", team, robot)
+					log.Println("/put updated waypoint for team", team, "and robot", robot)
 				} else {
 					// send the error
-					log.Println("/put failure: field %s must be Location or Waypoint", field)
+					log.Println("/put failure: field", field, "must be Location or Waypoint", field)
 					fmt.Fprintf(w, "failure: field must be Location or Waypoint")
 					return
 				}
+				log.Println("/put team=", team, ", robot=", robot, ", field=", field, ", value=", value)
 				fmt.Fprintf(w, "success: team=%s, robot=%s, field=%s, value=%s", team, robot, field, value)
 				
 			default:
@@ -475,5 +479,5 @@ func main() {
 	})
 
 	fmt.Printf("Running")
-    log.Fatal(http.ListenAndServe(":1001", nil))
+    log.Fatal(http.ListenAndServe(":1002", nil))
 }
