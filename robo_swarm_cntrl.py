@@ -196,7 +196,7 @@ async def move_robots_to_waypoint(robot_con_list, waypoint_list):
 
     movements = []
     for robot, waypoint in zip(robots, waypoint_list):
-        move = robot.go_to_pose(pose=Pose(waypoint[0], waypoint[1], 0, angle_z=degrees(0)), relative_to_robot=True, in_parallel=True)
+        move = robot.go_to_pose(pose=Pose(waypoint[0]*600, waypoint[1]*600, 0, angle_z=degrees(0)), relative_to_robot=True, in_parallel=True)
         robot.set_head_angle(cozmo.util.Angle(degrees=0), in_parallel=True)
 
     #for move in movements:
