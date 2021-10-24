@@ -3,17 +3,32 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using System;
+using TMPro;
 
 public class GameManager : MonoBehaviour
 {
-    private int OculusID;
-    private string TeamName;
-    private GSRequest statusUpdate;
+    public int OculusID;
+    public string TeamName;
+    private JSONObject statusUpdate;
+
+    private List<GameObject> MyTeam = new List<GameObject>();
+    private List<GameObject> MyGhostTeam = new List<GameObject>();
+    private List<GameObject> OpposingTeam = new List<GameObject>();
+
+    public GameObject waypointPrefab;
+    public GameObject redFlagPrefab;
+    public GameObject blueFlagPrefab;
+
+    public GameObject redFlag;
+    public GameObject blueFlag;
+
+    public TextMeshPro redScoreText;
+    public TextMeshPro blueScoreText;
+
 
     // Start is called before the first frame update
     void Start()
     {
-        
         // Start by figuring out which team I'm on: 
         // Generate an OculusID and send to http://server/register
         // The reply will include the OculusIDs and Team (either 0 or 1)
@@ -27,27 +42,129 @@ public class GameManager : MonoBehaviour
         StartCoroutine(GetTeamNumber(OculusID));
         // Now we know what team we're on (0=Blue, 1=Red). We won't change this from here on out
 
-        // Instantiate ghost players, which are the user-movable ones
+        // instantiate the flags at the base
+        redFlag = Instantiate(redFlagPrefab, GameObject.Find("RedGoal").transform.position, GameObject.Find("RedGoal").transform.rotation);
+        blueFlag = Instantiate(blueFlagPrefab, GameObject.Find("BlueGoal").transform.position, GameObject.Find("RedGoal").transform.rotation);
+
+        redScoreText = GameObject.Find("Red Score Text").GetComponent<TextMeshPro>();
+        blueScoreText = GameObject.Find("Blue Score Text").GetComponent<TextMeshPro>();
+
+        // Collect players (ghost players are the user-movable ones)
+        for (int i=1;i<=4;i++){
+            
+            GameObject playerObj = GameObject.Find("anki_cozmo ("+i.ToString()+")");
+            MyTeam.Add(playerObj);
+            // Debug.Log("My team member added: "+playerObj.name);
+
+            playerObj = GameObject.Find("anki_cozmo_ghost ("+i.ToString()+")");
+            MyGhostTeam.Add(playerObj);
+            // Debug.Log("My ghost team member added: "+playerObj.name);
+
+            playerObj = GameObject.Find("anki_cozmo ("+(i+4).ToString()+")");
+            OpposingTeam.Add(playerObj);
+            // Debug.Log("Opposing team member added: "+playerObj.name);
+        }
+        
+        StartCoroutine(LocationCycle());
+        
     }
 
     // Update is called once per frame
     void Update()
     {
-        // Grab location data for both team's players
-        StartCoroutine(GetRequest("http://143.215.60.21:1001/get")); 
-
+        // Use OVRInput and IsGrabbable Script to notice when a hand has grabbed a robot. Flag that robot and the
+        // hand that's moving it. Upon release, (wait half a second and) update the waypoint location (send via http:.../put)
         
-        
+        // OVRGrabber leftHand = ;
 
-        // Check for user input: new waypoints? (Don't do that during Update, actually. 
-        // Have a trigger handler that selects the VR cozmo and do a drag-and-drop to a new location)
-        // Option 1: While cozmos are not being held, grab their position information to send to the server as waypoints
-        // (easier than Option 2, although perhaps less efficient)
-        // Option 2: Update the server only after a cozmo has been picked up, dropped, and stopped moving.
+    }
 
-        // Send the location of the new waypoints
+    IEnumerator LocationCycle(){
+        while(true){
+            StartCoroutine(GetRequest("http://1f82-2610-148-1f02-3000-b082-3101-7d86-202.ngrok.io/get")); 
+            yield return new WaitForSeconds(0.1f);
 
-        // Update the board in VR (ghost players show actual locations)
+            float offset_x =  -0.5f;
+            float offset_y = 0.25f;
+
+            // flags at bases
+            if (statusUpdate["RedFlagAtBase"].b) {
+                redFlag.transform.position = GameObject.Find("RedGoal").transform.position;
+            }
+            if (statusUpdate["BlueFlagAtBase"].b) {
+                blueFlag.transform.position = GameObject.Find("BlueGoal").transform.position;
+            }
+
+            // base locations
+            float blue_location_x = (float) statusUpdate["BlueFlagBaseLocation"][0].n;
+            float blue_location_y = (float) statusUpdate["BlueFlagBaseLocation"][1].n;
+            GameObject.Find("BlueGoal").transform.position = new Vector3(blue_location_x + offset_x, .75f, blue_location_y + offset_y);
+
+            float red_location_x = (float) statusUpdate["RedFlagBaseLocation"][0].n;
+            float red_location_y = (float) statusUpdate["RedFlagBaseLocation"][1].n;
+            GameObject.Find("RedGoal").transform.position = new Vector3(red_location_x + offset_x, .75f, red_location_y + offset_y);
+
+            redScoreText.SetText("Red Score: " + ((int) statusUpdate["RedTeamScore"].n));
+            blueScoreText.SetText("Blue Score: " + ((int) statusUpdate["BlueTeamScore"].n));
+
+            GameObject go;
+            
+            for (int i = 1; i<=4; i++){
+                // ignore if the robot does not exist in the data sent
+                if (!statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]) {
+                    //Debug.Log("No data for cozmo_" + i.ToString());
+                    continue;
+                }
+
+                // get the game object for the robot
+                go = GameObject.Find("anki_cozmo ( " + i.ToString() + ")");
+
+                // update the robot's location
+                float location_x = (float) statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["Location"][0].n;
+                float location_y = (float) statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["Location"][1].n;
+                go.transform.position = new Vector3(location_x + offset_x, 0.75f, location_y + offset_y);
+
+                // update HasRedFlag
+                if (statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["HasRedFlag"].b) {
+                    redFlag.transform.position = new Vector3(location_x + offset_x, 0.85f, location_y + offset_y);
+                }
+                
+                // update HasBlueFlag                
+                if (statusUpdate["BlueTeam"]["cozmo_" + i.ToString()]["HasBlueFlag"].b) {
+                    redFlag.transform.position = new Vector3(location_x + offset_x, 0.85f, location_y + offset_y);
+                }           
+            }
+    
+            for (int i = 5; i<=8; i++) {
+                go = GameObject.Find("cozmo_" + i);
+                // update location
+                // go.transform.position = new Vector3((float) (statusUpdate["RedTeam"]["cozmo_" + i]["Location"][0]), 0.75f, (float) (statusUpdate["RedTeam"]["cozmo_" + i]["Location"][1]));
+
+                // update HasRedFlag
+                // update HasBlueFlag
+            }
+        }
+    }
+
+    // from https://forum.unity.com/threads/turn-string-into-list-of-ints.340341/
+    public List<float> GetFloatsFromString(string str){
+        str = str.Substring(1, str.Length);
+        List<float> floats = new List<float>();
+     
+        string[] splitString = str.Split(new string[] { "," }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (string item in splitString)
+        {
+            try
+            {
+                floats.Add(float.Parse(item));
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError("Value in string was not an int.");
+                Debug.LogException(e);
+            }
+        }
+        return floats;
     }
 
 
@@ -72,7 +189,7 @@ public class GameManager : MonoBehaviour
                     break;
                 case UnityWebRequest.Result.Success:
                     Debug.Log(pages[page] + ":\nReceived: " + webRequest.downloadHandler.text);
-                    GSRequest statusUpdate = JsonUtility.FromJson<GSRequest>(webRequest.downloadHandler.text);
+                    statusUpdate = new JSONObject(webRequest.downloadHandler.text); //JsonUtility.FromJson<GSRequest>(webRequest.downloadHandler.text);
                     break;
             }
         }
@@ -84,7 +201,7 @@ public class GameManager : MonoBehaviour
 
         form.AddField("OculusId", HeadsetID);
 
-        UnityWebRequest www = UnityWebRequest.Post("http://143.215.60.21:1001/register", form);
+        UnityWebRequest www = UnityWebRequest.Post("http://1f82-2610-148-1f02-3000-b082-3101-7d86-202.ngrok.io/register", form);
         yield return www.SendWebRequest();
 
         if (www.result != UnityWebRequest.Result.Success)
@@ -94,90 +211,60 @@ public class GameManager : MonoBehaviour
         else
         {
             Debug.Log("Form upload complete!\n" + www.downloadHandler.text);
-            GSRequest statusUpdate = JsonUtility.FromJson<GSRequest>(www.downloadHandler.text);
-            if (statusUpdate.Status == 200){
+            GSRequest TeamIDUpdate = JsonUtility.FromJson<GSRequest>(www.downloadHandler.text);
+            if (TeamIDUpdate.Status == 200){
                 Debug.Log("Team is logged in!");
                 // Parse return value to determine team: either 0 or 1
-                int TeamID = statusUpdate.Team;
+                int TeamID = TeamIDUpdate.Team;
                 if (TeamID == 0){
                     TeamName = "BlueTeam";
                     Debug.Log("TeamID is " + TeamID + ". You are the " + TeamName);
+                    GameObject.Find("Team Text").GetComponent<TextMeshPro>().SetText("Team: " + TeamName);
                     
                 }
                 if (TeamID == 1){
                     TeamName = "RedTeam";
                     Debug.Log("TeamID is " + TeamID + ". You are the " + TeamName);
+                    GameObject.Find("Team Text").GetComponent<TextMeshPro>().SetText("Team: " + TeamName);
                 }
             }
             else {
-                Debug.Log("Error registering: code " + statusUpdate.Status.ToString());
+                Debug.Log("Error registering: code " + TeamIDUpdate.Status.ToString());
             }
         }
     }
+ 
 
-IEnumerator SendWaypoints(string TeamName, int robot_num, float[] target_pose)
+    [System.Serializable]
+    public class CozmoStats
     {
-        WWWForm form = new WWWForm();
-        // Team: (0,1)
-        // Robot: e.g. cozmo_1
-        // Field: Location OR Waypoint
-        // Value: [x,y] where (x,y) e [0,1]
-        // OculusID: int
-
-        string RobotName = "cozmo_" + robot_num.ToString();
-
-
-        form.AddField("Team", TeamName);
-        form.AddField("Robot", RobotName);
-        form.AddField("Field", "Waypoint");
-        form.AddField("Value", target_pose.ToString());
-        form.AddField("OculusID", OculusID.ToString());
-
-        // GSRequest newStatus = new GSRequest();
-        // newStatus.Team = TeamID;
-        // newStatus.Robot = RobotName;
-        // newStatus.Field = "Waypoint";
-        // newStatus.Value = target_pose;
-        // newStatus.OculusId = OculusID;
-
-        // string json = JsonUtility.ToJson(newStatus);
-
-
-        UnityWebRequest www = UnityWebRequest.Post("http://143.215.60.21:1001/put", form);
-        yield return www.SendWebRequest();
-
-        if (www.result != UnityWebRequest.Result.Success)
-        {
-            Debug.Log(www.error);
-        }
-        else
-        {
-            Debug.Log("Form upload complete!");
-        }
-    }
-        
-
-
-}
-
-[System.Serializable]
-public class GSRequest
-{
-    public int Team;
-    public string Robot;
-    public string Field;
-    public float[] Value;
-    public int OculusId;
-    public int Status;
-
-    public static GSRequest CreateFromJSON(string jsonString)
-    {
-        return JsonUtility.FromJson<GSRequest>(jsonString);
+        public List<float> Location;
+        public List<float> Waypoint;
+        public bool HasRedFlag;
+        public bool HasBlueFlag;
+        public bool CanMove;
+        public float AuraCount;
     }
 
-    public string SaveToString()
+    [System.Serializable]
+    public class GSRequest
     {
-        return JsonUtility.ToJson(this);
-    }
+        public int Team;
+        public string Robot;
+        public string Field;
+        public List<float> Value;
+        public int OculusId;
+        public int Status;
 
+        public bool BlueFlagAtBase;
+        public List<float> BlueFlagBaseLocation;
+        public bool RedFlagAtBase;
+        public List<float> RedFlagBaseLocation;
+        public Dictionary<string, CozmoStats> BlueTeam; 
+        public Dictionary<string, CozmoStats> RedTeam; 
+
+        public int RedTeamScore;
+        public int BlueTeamScore;
+
+    }
 }

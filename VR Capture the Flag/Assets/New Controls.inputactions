@@ -1,0 +1,45 @@
+{
+    "name": "New Controls",
+    "maps": [
+        {
+            "name": "New action map",
+            "id": "b4f89bec-c93b-4bd1-8d7e-a3451ef9e504",
+            "actions": [
+                {
+                    "name": "OculusGripper",
+                    "type": "Value",
+                    "id": "981836b6-39db-4b02-8402-74666e2a0743",
+                    "expectedControlType": "Digital",
+                    "processors": "",
+                    "interactions": ""
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "85309865-fa9e-445f-92d0-53c8a7d1025c",
+                    "path": "*/{SecondaryTrigger}",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "LetGoOfRobot",
+                    "action": "OculusGripper",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
+        }
+    ],
+    "controlSchemes": [
+        {
+            "name": "LetGoOfRobot",
+            "bindingGroup": "LetGoOfRobot",
+            "devices": [
+                {
+                    "devicePath": "<OculusTouchController>",
+                    "isOptional": false,
+                    "isOR": false
+                }
+            ]
+        }
+    ]
+}
