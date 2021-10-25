@@ -100,6 +100,7 @@ def enumerate_robot_conn(event_loop):
                 trying_to_connect_again = False
             except cozmo.ConnectionError as e:
                 print("A connection error occurred: %s" % e)
+                print("While trying to connect to " + str(i) + " robot")
                 print("Will try to connect again in 2 seconds")
                 time.sleep(2)
 
