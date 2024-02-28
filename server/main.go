@@ -457,6 +457,7 @@ func main() {
         w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)		
 		
+		log.Printf("/get success")
 		fmt.Fprintf(w, "%s", b)
 		return
     })
